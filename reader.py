@@ -1,7 +1,13 @@
 import re
+import os
+import json
 from datetime import datetime
 from openpyxl import load_workbook
 import hashlib
+from google.cloud import pubsub_v1
+from flask import Flask
+
+app = Flask(__name__)
 
 def converter_data_br(valor):
     if isinstance(valor, str):
@@ -35,8 +41,7 @@ def compute_row_hash(row, current_columns, account):
     concatenated = "".join(parts)
     return hashlib.md5(concatenated.encode('utf-8')).hexdigest()
 
-def parse_relatorio_excel(file_path, account):
-
+def convert_data(file_path, account):
     wb = load_workbook(file_path, data_only=True)
     sheet = wb.active
     
@@ -108,11 +113,25 @@ def parse_relatorio_excel(file_path, account):
     
     return data_blocks
 
+@app.route('/', methods=['POST'])
+def parse_excel(file_path):
+    data = convert_data(file_path, "Cartão Azul Visa")
+
+    publisher = pubsub_v1.PublisherClient()
+    topic_path = os.environ.get("transactions_topic")
+
+    for row in data:
+        row_json = json.dumps(row).encode("utf-8")
+        future = publisher.publish(topic_path, data=row_json)
+        message_id = future.result()
+        
+    
+
 if __name__ == "__main__":
     file_path = "Fatura-Excel-fev.xlsx"  
     account = "Cartão Azul Visa"         
     
-    blocks = parse_relatorio_excel(file_path, account)
+    blocks = convert_data(file_path, account)
     
     print(f"Foram encontrados {len(blocks)} bloco(s) de dados.\n")
     for i, block in enumerate(blocks, start=1):
