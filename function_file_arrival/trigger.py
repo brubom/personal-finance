@@ -27,7 +27,6 @@ def storage_trigger_function(event, context):
     account_value = folder_to_account_map.get(folder_name, 'account_default').upper()
     logger.info(f"Account derivada: {account_value}")
 
-
     env_var_key = f"TRANSACTIONS_FUNCTION_{account_value}"
     second_function_url = os.environ.get(env_var_key)
 
