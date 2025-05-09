@@ -45,4 +45,7 @@ htmlcov/
 # Project specific
 transactions.json
 *.xlsx
+*.csv.DS_Store
+**/.DS_Store
+
 *.xls
