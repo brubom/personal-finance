@@ -3,6 +3,7 @@ import re
 import json
 import hashlib
 import logging
+import pandas as pd
 from datetime import datetime
 from openpyxl import load_workbook
 from google.cloud import pubsub_v1
@@ -48,10 +49,56 @@ def compute_row_hash(row, current_columns, account):
     concatenated = "".join(parts)
     return hashlib.md5(concatenated.encode('utf-8')).hexdigest()
 
+def convert_xls_to_xlsx(file_path):
+    """
+    Converte um arquivo .xls para .xlsx usando pandas.
+    Retorna o caminho do novo arquivo .xlsx.
+    """
+    try:
+        # Lê o arquivo .xls
+        df = pd.read_excel(file_path, engine='xlrd')
+        
+        # Cria o nome do novo arquivo .xlsx
+        xlsx_path = file_path.rsplit('.', 1)[0] + '.xlsx'
+        
+        # Salva como .xlsx
+        df.to_excel(xlsx_path, index=False, engine='openpyxl')
+        
+        logger.info(f"Arquivo convertido de {file_path} para {xlsx_path}")
+        return xlsx_path
+    except Exception as e:
+        logger.error(f"Erro ao converter arquivo {file_path}: {e}", exc_info=True)
+        raise
+
+def process_row(row, current_columns, account):
+    """Processa uma linha de dados."""
+    row_dict = {}
+    for col_index, col_name in enumerate(current_columns):
+        if col_name:
+            valor_celula = row[col_index] if col_index < len(row) else None
+            row_dict[col_name] = valor_celula
+    
+    if 'data' in row_dict:
+        row_dict['data'] = converter_data_br(row_dict['data'])
+    if 'valor' in row_dict:
+        row_dict['valor'] = converter_valor_br(row_dict['valor'])
+    
+    row_dict['account'] = account
+    row_dict['id'] = compute_row_hash(row_dict, current_columns, account)
+    return row_dict
+
+def process_header(row):
+    """Processa o cabeçalho da planilha."""
+    return [str(x).strip().lower() if x else None for x in row]
+
 def convert_data(file_path, account):
     """Converte dados do arquivo Excel."""
     try:
         logger.info(f"Processando arquivo: {file_path}")
+        
+        if file_path.lower().endswith('.xls'):
+            file_path = convert_xls_to_xlsx(file_path)
+        
         wb = load_workbook(file_path, data_only=True)
         sheet = wb.active
         
@@ -60,8 +107,8 @@ def convert_data(file_path, account):
         current_columns = []
         
         STATE_SEARCHING_HEADER = 0
-        STATE_READING_DATA     = 1
-        STATE_SEARCHING_NEXT   = 2
+        STATE_READING_DATA = 1
+        STATE_SEARCHING_NEXT = 2
 
         state = STATE_SEARCHING_HEADER
         lines_without_header = 0
@@ -73,20 +120,12 @@ def convert_data(file_path, account):
             if not first_cell:
                 first_cell = None
             
-            if state == STATE_SEARCHING_HEADER:
-                if first_cell == 'data':
-                    current_columns = [
-                        str(x).strip().lower() if x else None 
-                        for x in row
-                    ]
-                    current_block = []
-                    state = STATE_READING_DATA
-                else:
-                    continue
-            
+            if state == STATE_SEARCHING_HEADER and first_cell == 'data':
+                current_columns = process_header(row)
+                current_block = []
+                state = STATE_READING_DATA
             elif state == STATE_READING_DATA:
                 if first_cell is None:
-                    # fim do bloco
                     if current_block:
                         data_blocks.append(current_block)
                     current_block = []
@@ -94,38 +133,17 @@ def convert_data(file_path, account):
                     state = STATE_SEARCHING_NEXT
                     lines_without_header = 0
                 else:
-                    row_dict = {}
-                    for col_index, col_name in enumerate(current_columns):
-                        if col_name:
-                            valor_celula = row[col_index] if col_index < len(row) else None
-                            row_dict[col_name] = valor_celula
-                    # conversões
-                    if 'data' in row_dict:
-                        row_dict['data'] = converter_data_br(row_dict['data'])
-                    if 'valor' in row_dict:
-                        row_dict['valor'] = converter_valor_br(row_dict['valor'])
-                    
-                    row_dict['account'] = account
-                    row_dict['id'] = compute_row_hash(row_dict, current_columns, account)
-                    
-                    current_block.append(row_dict)
-            
+                    current_block.append(process_row(row, current_columns, account))
             elif state == STATE_SEARCHING_NEXT:
                 if first_cell == 'data':
-                    current_columns = [
-                        str(x).strip().lower() if x else None 
-                        for x in row
-                    ]
+                    current_columns = process_header(row)
                     current_block = []
                     state = STATE_READING_DATA
                 else:
                     lines_without_header += 1
                     if lines_without_header >= 6:
                         break
-                    else:
-                        continue
 
-        # se terminar o arquivo ainda no estado de leitura de dados
         if state == STATE_READING_DATA and current_block:
             data_blocks.append(current_block)
         
@@ -176,21 +194,25 @@ def parse_excel(request):
             
             total_mensagens = 0
 
-            # Publica cada bloco no Pub/Sub
-            for i, bloco in enumerate(data_blocks, start=1):
-                try:
-                    bloco_json = json.dumps(bloco).encode("utf-8")
-                    future = publisher.publish(topic_path, data=bloco_json)
-                    message_id = future.result()
-                    total_mensagens += len(bloco)
-                    logger.info(f"Bloco {i} publicado com sucesso. ID: {message_id}")
-                except Exception as e:
-                    logger.error(f"Erro ao publicar bloco {i} no Pub/Sub: {e}", exc_info=True)
-                    continue
+            # Publica todos os blocos em uma única mensagem
+            try:
+                all_blocks_json = json.dumps(data_blocks).encode("utf-8")
+                future = publisher.publish(topic_path, data=all_blocks_json)
+                message_id = future.result()
+                total_mensagens = sum(len(bloco) for bloco in data_blocks)
+                logger.info(f"Todos os blocos publicados com sucesso. ID: {message_id}")
+            except Exception as e:
+                logger.error(f"Erro ao publicar blocos no Pub/Sub: {e}", exc_info=True)
         else:
-            # Em ambiente local, apenas retorna os dados
+            # Em ambiente local, salva o JSON na raiz do projeto
             total_mensagens = sum(len(bloco) for bloco in data_blocks)
-            logger.info(f"Modo local: {total_mensagens} mensagens processadas (sem publicação no Pub/Sub)")
+            output_file = "transactions.json"
+            try:
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    json.dump(data_blocks, f, ensure_ascii=False, indent=2)
+                logger.info(f"Modo local: {total_mensagens} mensagens salvas em {output_file}")
+            except Exception as e:
+                logger.error(f"Erro ao salvar arquivo JSON: {e}", exc_info=True)
         
         logger.info(f"Processamento concluído. Total de mensagens: {total_mensagens}.")
 

@@ -9,6 +9,7 @@ from credit_card_readers.azul_visa_reader import (
     convert_data,
     parse_excel
 )
+import json
 
 class TestAzulVisaReader(unittest.TestCase):
     def setUp(self):
@@ -16,7 +17,7 @@ class TestAzulVisaReader(unittest.TestCase):
         self.test_file_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)),
             'resources',
-            'Fatura-Excel-fev.xlsx'
+            'Fatura-Excel.xls'
         )
 
     def test_converter_data_br(self):
@@ -127,7 +128,8 @@ class TestAzulVisaReader(unittest.TestCase):
     def test_parse_excel_production(self, mock_publisher, mock_convert_data):
         # Mock da função convert_data
         mock_convert_data.return_value = [
-            [{'data': '2024-01-01', 'valor': 1234.56, 'account': 'ITAU_CARD', 'id': 'hash1'}]
+            [{'data': '2024-01-01', 'valor': 1234.56, 'account': 'ITAU_CARD', 'id': 'hash1'}],
+            [{'data': '2024-01-02', 'valor': 2345.67, 'account': 'ITAU_CARD', 'id': 'hash2'}]
         ]
 
         # Mock do publisher
@@ -153,12 +155,15 @@ class TestAzulVisaReader(unittest.TestCase):
         self.assertEqual(status_code, 200)
         self.assertEqual(response['file_path'], 'test.xlsx')
         self.assertEqual(response['account'], 'ITAU_CARD')
-        self.assertEqual(response['blocos'], 1)
-        self.assertEqual(response['mensagens_publicadas'], 1)
+        self.assertEqual(response['blocos'], 2)  # Agora temos 2 blocos
+        self.assertEqual(response['mensagens_publicadas'], 2)  # Total de mensagens em todos os blocos
         self.assertEqual(response['ambiente'], 'produção')
 
-        # Verifica se o publisher foi chamado
+        # Verifica se o publisher foi chamado apenas uma vez com todos os blocos
         mock_publisher_instance.publish.assert_called_once()
+        call_args = mock_publisher_instance.publish.call_args[1]
+        published_data = json.loads(call_args['data'].decode('utf-8'))
+        self.assertEqual(len(published_data), 2)  # Verifica se todos os blocos foram publicados
 
     def test_parse_excel_invalid_json(self):
         # Mock do request com JSON inválido

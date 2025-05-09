@@ -20,13 +20,14 @@ def storage_trigger_function(event, context):
         logger.warning("Nome do arquivo ou bucket não encontrados no evento.")
         return
 
-    folder_name = file_name.split('/')[0] if '/' in file_name else ''
+    # Extrai o caminho completo até o arquivo (sem o nome do arquivo)
+    folder_name = '/'.join(file_name.split('/')[:-1]) if '/' in file_name else ''
     logger.info(f"Arquivo recebido: bucket={bucket_name}, file={file_name}, folder={folder_name}")
 
     folder_to_account_map = {
-        'finance_transactions/azul': 'itau_card',
-        'finance_transactions': 'account_Y',
-        'pastaZ': 'account_Z'
+        'finance_transactions/azul': 'ITAU_CARD_AZUL',
+        'finance_transactions/master': 'ITAU_CARD',
+        'finance_transactions': 'ITAU_BANK_ACCOUNT'
     }
     account_value = folder_to_account_map.get(folder_name, 'account_default').upper()
     logger.info(f"Account derivada: {account_value}")

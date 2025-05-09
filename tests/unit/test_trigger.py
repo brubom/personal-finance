@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from function_file_arrival.trigger import storage_trigger_function
+import requests
 
 class TestStorageTrigger(unittest.TestCase):
     def setUp(self):
@@ -56,7 +57,7 @@ class TestStorageTrigger(unittest.TestCase):
     @patch('function_file_arrival.trigger.requests.post')
     def test_http_error(self, mock_post, mock_env_get):
         mock_env_get.return_value = 'http://test-url.com'
-        mock_post.side_effect = Exception("HTTP Error")
+        mock_post.side_effect = requests.exceptions.RequestException("HTTP Error")
         
         with self.assertLogs(level='ERROR') as log:
             storage_trigger_function(self.valid_event, None)
