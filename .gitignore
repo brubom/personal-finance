@@ -21,8 +21,6 @@ wheels/
 *.egg
 
 # Virtual Environment
-.env
-.venv/
 venv/
 ENV/
 
@@ -31,7 +29,17 @@ ENV/
 .vscode/
 *.swp
 *.swo
+
+# OS
 .DS_Store
+**/.DS_Store
+
+# Environment
+.env
+
+# Credentials
+credentials/
+*.json
 
 # Logs
 *.log

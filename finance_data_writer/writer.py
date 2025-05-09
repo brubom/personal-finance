@@ -14,6 +14,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def check_credentials():
+    """
+    Verifica se as credenciais do Google Cloud estão configuradas.
+    """
+    credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+    if not credentials_path:
+        raise ValueError("Variável GOOGLE_APPLICATION_CREDENTIALS não configurada")
+    if not os.path.exists(credentials_path):
+        raise ValueError(f"Arquivo de credenciais não encontrado: {credentials_path}")
+
 def write_to_bigquery(transactions):
     """
     Escreve as transações no BigQuery.
@@ -26,6 +36,9 @@ def write_to_bigquery(transactions):
         
         if not all([project_id, dataset_id, table_id]):
             raise ValueError("Variáveis de ambiente do BigQuery não configuradas")
+        
+        # Verifica credenciais
+        check_credentials()
         
         # Inicializa o cliente do BigQuery
         client = bigquery.Client(project=project_id)
@@ -78,6 +91,9 @@ def main():
         
         if not all([project_id, subscription_id]):
             raise ValueError("Variáveis de ambiente do Pub/Sub não configuradas")
+        
+        # Verifica credenciais
+        check_credentials()
         
         # Inicializa o subscriber
         subscriber = pubsub_v1.SubscriberClient()
