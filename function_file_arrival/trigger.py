@@ -1,6 +1,10 @@
 import os
 import logging
 import requests
+from dotenv import load_dotenv
+
+# Carrega as variáveis de ambiente do arquivo .env
+load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,7 +25,7 @@ def storage_trigger_function(event, context):
 
     folder_to_account_map = {
         'finance_transactions/azul': 'itau_card',
-        'pastaY': 'account_Y',
+        'finance_transactions': 'account_Y',
         'pastaZ': 'account_Z'
     }
     account_value = folder_to_account_map.get(folder_name, 'account_default').upper()
