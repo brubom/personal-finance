@@ -4,8 +4,8 @@
 
 ![Python](https://img.shields.io/badge/python-3.13-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-![CI/CD](https://github.com/brunohiperstream/itau-credit-card-statement-reader/actions/workflows/ci-cd.yml/badge.svg)
-[![codecov](https://codecov.io/gh/brunohiperstream/itau-credit-card-statement-reader/branch/main/graph/badge.svg)](https://codecov.io/gh/brunohiperstream/itau-credit-card-statement-reader)
+![CI/CD](https://github.com/brubim/personal-finance/actions/workflows/ci-cd.yml/badge.svg)
+[![codecov](https://codecov.io/gh/brubom/personal-finance/branch/main/graph/badge.svg)](https://codecov.io/gh/brubom/personal-finance)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
 
@@ -38,8 +38,8 @@ Este projeto é um leitor automatizado de extratos de cartão de crédito do Ita
 
 1. Clone o repositório:
 ```bash
-git clone https://github.com/brunohiperstream/itau-credit-card-statement-reader.git
-cd itau-credit-card-statement-reader
+git clone https://github.com/brubom/personal-finance.git
+cd personal-finance
 ```
 
 2. Crie e ative um ambiente virtual:
@@ -124,21 +124,6 @@ itau-credit-card-statement-reader/
 3. Faça o Commit das suas mudanças (`git commit -m 'Add some AmazingFeature'`)
 4. Faça o Push para a Branch (`git push origin feature/AmazingFeature`)
 5. Abra um Pull Request
-
-## 📝 Licença
-
-Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
-
-## 📫 Contato
-
-Bruno Hiperstream - [@brunohiperstream](https://github.com/brunohiperstream)
-
-## 🙏 Agradecimentos
-
-- [Google Cloud Platform](https://cloud.google.com/)
-- [Python](https://www.python.org/)
-- [Pandas](https://pandas.pydata.org/)
-- [Pytest](https://docs.pytest.org/)
 
 ---
 
