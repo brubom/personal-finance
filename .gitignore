@@ -22,6 +22,7 @@ wheels/
 
 # Virtual Environment
 venv/
+env/
 ENV/
 
 # IDE
@@ -29,10 +30,33 @@ ENV/
 .vscode/
 *.swp
 *.swo
-
-# OS
 .DS_Store
-**/.DS_Store
+
+# Testing
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+coverage/
+junit.xml
+bandit-results.json
+
+# Logs
+*.log
+logs/
+
+# Local development
+.env
+.env.local
+.env.*.local
+
+# Google Cloud
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
 
 # Environment
 .env
@@ -40,15 +64,6 @@ ENV/
 # Credentials
 credentials/
 *.json
-
-# Logs
-*.log
-logs/
-
-# Test coverage
-.coverage
-htmlcov/
-.pytest_cache/
 
 # Project specific
 transactions.json
