@@ -7,10 +7,16 @@ setup(
     install_requires=[
         "google-cloud-bigquery>=3.17.0",
         "google-cloud-pubsub>=2.19.0",
+        "google-cloud-storage>=2.14.0",
         "python-dotenv>=1.0.1",
         "pandas>=2.2.0",
         "openpyxl>=3.1.2",
         "xlrd>=2.0.1",
+        "python-json-logger>=2.0.7",
+        "opentelemetry-api>=1.23.0",
+        "opentelemetry-sdk>=1.23.0",
+        "opentelemetry-exporter-gcp-trace>=1.9.0",
+        "functions-framework==3.8.2",
     ],
     extras_require={
         "dev": [

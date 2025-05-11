@@ -1,57 +1,116 @@
 import os
+import json
 import logging
 import requests
+import time
 from dotenv import load_dotenv
+from typing import Dict, Any
 
-# Carrega as variáveis de ambiente do arquivo .env
+import functions_framework
+from flask import Request
+from google.cloud import storage
+from google.cloud import pubsub_v1
+
+from utils.logging_config import setup_logging, log_structured
+from utils.telemetry import create_span, get_current_trace_id
+from utils.factories import get_logger, get_telemetry
+
+# Load environment variables
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(levelname)s | %(asctime)s | %(name)s | %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Setup logger
+logger = get_logger(__name__)
 
-def storage_trigger_function(event, context):
+# Mapeamento de pastas para contas
+FOLDER_TO_ACCOUNT = {
+    "azul-visa": "azul-visa",
+    "itau-card": "itau-card",
+}
 
-    file_name   = event.get('name')
-    bucket_name = event.get('bucket')
-    if not file_name or not bucket_name:
-        logger.warning("Nome do arquivo ou bucket não encontrados no evento.")
-        return
-
-    # Extrai o caminho completo até o arquivo (sem o nome do arquivo)
-    folder_name = '/'.join(file_name.split('/')[:-1]) if '/' in file_name else ''
-    logger.info(f"Arquivo recebido: bucket={bucket_name}, file={file_name}, folder={folder_name}")
-
-    folder_to_account_map = {
-        'finance_transactions/azul': 'ITAU_CARD_AZUL',
-        'finance_transactions/master': 'ITAU_CARD',
-        'finance_transactions': 'ITAU_BANK_ACCOUNT'
-    }
-    account_value = folder_to_account_map.get(folder_name, 'account_default').upper()
-    logger.info(f"Account derivada: {account_value}")
-
-    env_var_key = f"TRANSACTIONS_FUNCTION_{account_value}"
-    second_function_url = os.environ.get(env_var_key)
-
-    if not second_function_url:
-        logger.error(f"A variável de ambiente '{env_var_key}' não foi encontrada. Abortando.")
-        return
-
-    payload = {
-        "bucket": bucket_name,
-        "file_path": file_name,
-        "account": account_value
-    }
-    logger.info(f"Enviando payload para {second_function_url}: {payload}")
-
+@functions_framework.cloud_event
+def storage_trigger_function(cloud_event, telemetry=None):
+    """Cloud Function triggered by a change to a Cloud Storage bucket.
+    
+    Args:
+        cloud_event: The CloudEvent that triggered this function.
+        telemetry: Optional telemetry instance for testing.
+    """
+    telemetry = telemetry or get_telemetry("trigger")
+    data = cloud_event.data
     try:
-        response = requests.post(second_function_url, json=payload)
-        response.raise_for_status()
-        logger.info(f"Chamada à segunda função bem-sucedida. Status code={response.status_code}")
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Erro ao chamar a segunda função ({second_function_url}): {e}", exc_info=True)
-        return
+        bucket_name = data["bucket"]
+        file_name = data["name"]
+    except KeyError as e:
+        missing = e.args[0]
+        log_structured(logger, logging.ERROR, f"Missing required fields in event: {missing}", **data)
+        return f"Missing required fields in event: {missing}"
 
-    logger.info(f"storage_trigger_function concluída para file={file_name}")
+    # Criar span para o processamento do arquivo
+    with create_span("process_file", {
+        "file_name": file_name,
+        "bucket": bucket_name,
+        "event_type": "storage.trigger"
+    }) as span:
+        try:
+            # Extrair nome da pasta do arquivo
+            folder_name = file_name.split("/")[0]
+            
+            # Verificar se a pasta é válida
+            if folder_name not in FOLDER_TO_ACCOUNT:
+                error_msg = f"Invalid folder name: {folder_name}"
+                log_structured(logger, logging.ERROR, error_msg,
+                             folder_name=folder_name,
+                             file_name=file_name)
+                span.set_attribute("error", error_msg)
+                return "Invalid folder name in file path"
+            
+            account = FOLDER_TO_ACCOUNT[folder_name]
+            env_var = f"TRANSACTIONS_FUNCTION_ITAU_CARD_{account.upper()}"
+            function_url = os.environ.get(env_var)
+            if not function_url:
+                log_structured(logger, logging.ERROR, f"Missing environment variable: {env_var}",
+                                 file_name=file_name)
+                span.set_attribute("error", f"Missing environment variable: {env_var}")
+                return f"Missing environment variable: {env_var}"
+            
+            # Preparar payload
+            payload = {
+                "file_path": file_name,
+                "bucket": bucket_name,
+                "account": account,
+                "trace_id": get_current_trace_id()
+            }
+            
+            # Registrar início do processamento
+            log_structured(logger, logging.INFO, "Sending request to processing function",
+                          function_url=function_url, payload=payload)
+            
+            # Enviar requisição para a função HTTP
+            start_time = time.monotonic()
+            response = requests.post(function_url, json=payload)
+            duration = time.monotonic() - start_time
+            
+            # Registrar métricas de tempo
+            log_structured(logger, logging.INFO, "SLI: request_duration",
+                          duration=duration,
+                          file_name=file_name,
+                          account=account)
+            
+            # Verificar resposta
+            response.raise_for_status()
+            
+            # Registrar sucesso
+            log_structured(logger, logging.INFO, "File processed successfully",
+                          file_name=file_name,
+                          account=account,
+                          duration=duration,
+                          status_code=response.status_code)
+            
+            return "File processed successfully"
+        except Exception as e:
+            error_msg = f"Error processing file: {str(e)}"
+            log_structured(logger, logging.ERROR, error_msg,
+                         file_name=file_name,
+                         bucket=bucket_name)
+            span.set_attribute("error", error_msg)
+            return f"Error processing file: {e}"

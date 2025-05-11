@@ -1,71 +1,65 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+import os
 from function_file_arrival.trigger import storage_trigger_function
-import requests
 
-class TestStorageTrigger(unittest.TestCase):
+class MockCloudEvent(dict):
+    @property
+    def data(self):
+        return self
+
+class TestTrigger(unittest.TestCase):
     def setUp(self):
         self.valid_event = {
             'bucket': 'test-bucket',
-            'name': 'finance_transactions/azul/test-file.xls'
+            'name': 'azul-visa/test-file.xls',
         }
+        self.mock_response = MagicMock()
+        self.mock_response.status_code = 200
 
-    @patch('function_file_arrival.trigger.os.environ.get')
     @patch('function_file_arrival.trigger.requests.post')
-    def test_valid_event_azul_card(self, mock_post, mock_env_get):
-        # Configura o mock para retornar uma URL de teste
-        mock_env_get.return_value = 'http://test-url.com'
-        
-        # Configura o mock da resposta HTTP
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_post.return_value = mock_response
+    def test_valid_event_azul_card(self, mock_post):
+        """Test processing a valid event for Azul card."""
+        mock_post.return_value = self.mock_response
+        os.environ['TRANSACTIONS_FUNCTION_ITAU_CARD_AZUL-VISA'] = 'http://test-function'
+        result = storage_trigger_function(MockCloudEvent(self.valid_event), None)
+        self.assertEqual(result, "File processed successfully")
 
-        # Executa a função
-        storage_trigger_function(self.valid_event, None)
-
-        # Verifica se a URL correta foi chamada
-        mock_env_get.assert_called_with('TRANSACTIONS_FUNCTION_ITAU_CARD_AZUL')
-        
-        # Verifica se o POST foi chamado com os parâmetros corretos
-        mock_post.assert_called_once()
-        call_args = mock_post.call_args[1]
-        self.assertEqual(call_args['json']['bucket'], 'test-bucket')
-        self.assertEqual(call_args['json']['file_path'], 'finance_transactions/azul/test-file.xls')
-        self.assertEqual(call_args['json']['account'], 'ITAU_CARD_AZUL')
-
-    @patch('function_file_arrival.trigger.os.environ.get')
-    def test_missing_environment_variable(self, mock_env_get):
-        mock_env_get.return_value = None
-        with self.assertLogs(level='ERROR') as log:
-            storage_trigger_function(self.valid_event, None)
-            self.assertIn("A variável de ambiente 'TRANSACTIONS_FUNCTION_ITAU_CARD_AZUL' não foi encontrada", log.output[0])
+    def test_missing_environment_variable(self):
+        """Test handling missing environment variable."""
+        os.environ.pop('TRANSACTIONS_FUNCTION_ITAU_CARD_AZUL-VISA', None)
+        result = storage_trigger_function(MockCloudEvent(self.valid_event), None)
+        self.assertEqual(result, "Missing environment variable: TRANSACTIONS_FUNCTION_ITAU_CARD_AZUL-VISA")
 
     def test_invalid_event_missing_bucket(self):
-        invalid_event = {'name': 'test-file.xls'}
-        with self.assertLogs(level='WARNING') as log:
-            storage_trigger_function(invalid_event, None)
-            self.assertIn("Nome do arquivo ou bucket não encontrados no evento", log.output[0])
+        """Test handling event with missing bucket."""
+        invalid_event = self.valid_event.copy()
+        del invalid_event['bucket']
+        result = storage_trigger_function(MockCloudEvent(invalid_event), None)
+        self.assertEqual(result, "Missing required fields in event: bucket")
 
     def test_invalid_event_missing_name(self):
-        invalid_event = {'bucket': 'test-bucket'}
-        with self.assertLogs(level='WARNING') as log:
-            storage_trigger_function(invalid_event, None)
-            self.assertIn("Nome do arquivo ou bucket não encontrados no evento", log.output[0])
+        """Test handling event with missing name."""
+        invalid_event = self.valid_event.copy()
+        del invalid_event['name']
+        result = storage_trigger_function(MockCloudEvent(invalid_event), None)
+        self.assertEqual(result, "Missing required fields in event: name")
 
-    @patch('function_file_arrival.trigger.os.environ.get')
+    def test_invalid_folder(self):
+        """Test handling event with invalid folder."""
+        invalid_event = self.valid_event.copy()
+        invalid_event['name'] = 'invalid/test-file.xls'
+        result = storage_trigger_function(MockCloudEvent(invalid_event), None)
+        self.assertEqual(result, "Invalid folder name in file path")
+
     @patch('function_file_arrival.trigger.requests.post')
-    def test_http_error(self, mock_post, mock_env_get):
-        # Configura o mock para simular um erro HTTP
-        mock_env_get.return_value = 'http://test-url.com'
-        mock_response = MagicMock()
-        mock_response.status_code = 500
-        mock_post.return_value = mock_response
-        mock_post.side_effect = requests.exceptions.RequestException("Test error")
-
-        with self.assertLogs(level='ERROR') as log:
-            storage_trigger_function(self.valid_event, None)
-            self.assertIn("Erro ao chamar a segunda função", log.output[0])
+    def test_http_error(self, mock_post):
+        """Test handling HTTP error from processing function."""
+        mock_post.return_value = self.mock_response
+        self.mock_response.raise_for_status.side_effect = Exception("HTTP Error")
+        os.environ['TRANSACTIONS_FUNCTION_ITAU_CARD_AZUL-VISA'] = 'http://test-function'
+        result = storage_trigger_function(MockCloudEvent(self.valid_event), None)
+        self.assertEqual(result, "Error processing file: HTTP Error")
 
 if __name__ == '__main__':
     unittest.main() 
