@@ -4,12 +4,7 @@ import logging
 import requests
 import time
 from dotenv import load_dotenv
-from typing import Dict, Any
-
 import functions_framework
-from flask import Request
-from google.cloud import storage
-from google.cloud import pubsub_v1
 
 from utils.logging_config import setup_logging, log_structured
 from utils.telemetry import create_span, get_current_trace_id

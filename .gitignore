@@ -72,3 +72,6 @@ transactions.json
 **/.DS_Store
 
 *.xls
+
+# Secrets
+.secrets
